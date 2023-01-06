@@ -1,0 +1,326 @@
+---
+title: "Project Two"
+author: "Rachel Kim"
+date: '2022-11-07'
+output:
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo = FALSE, results='hide',fig.keep='all')
+```
+
+```{r}
+# Import libraries and load data
+library(tidyverse)
+library(ISLR)
+library(GGally)
+library(dslabs)
+library(caret)
+library(InformationValue)
+library(sjPlot)
+library(DescTools)
+library(stringr)
+
+data(OJ)
+```
+
+```{r}
+# Data Examination
+
+# Check for missing values (none detected)
+map(OJ, ~sum(is.na(.)))
+
+# Purchase is categorical, "A factor with levels CH and MM indicating whether the customer purchased Citrus Hill or Minute Maid Orange Juice." R will consider MM to be 1.
+
+# 417 purchased MM out of the 1070 observations, giving a proportion of 0.3897 (prevalence)
+OJ %>%
+  group_by(Purchase) %>%
+  summarise(n = n())
+ prevalence <- 417/1070
+
+# Categorical variables: Purchase, StoreID, SpecialCH, SpecialMM, Store7, STORE
+# Quantitative variables: WeekofPurchase, PriceCH, PriceMM, DiscCH, DiscMM, LoyalCH, SalePriceMM, SalePriceCH, PriceDiff, PctDiscMM, PctDiscCH, ListPriceDiff
+ 
+ # STORE, StoreID, and Store7, WeekofPurchase, Invidvidual prices and discounts are removed later. 
+
+```
+
+```{r, fig.keep = "none"}
+
+# Histograms of quantitative data to check for skewness / outliers
+
+#Quantitative variables: WeekofPurchase, PriceCH, PriceMM, PriceDiff, DiscCH, DiscMM, LoyalCH, SalePriceMM, SalePriceCH, PctDiscMM, PctDiscCH, ListPriceDiff
+
+
+ggplot(OJ, aes(x=PriceCH)) + geom_histogram() + ggtitle("PriceCH")
+
+ggplot(OJ, aes(x=PriceMM)) + geom_histogram() + ggtitle("PriceMM")
+
+ggplot(OJ, aes(x=PriceDiff)) + geom_histogram() + ggtitle("PriceDiff")
+
+ggplot(OJ, aes(x=DiscCH)) + geom_histogram() + ggtitle("DiscCH")
+
+ggplot(OJ, aes(x=DiscMM)) + geom_histogram() + ggtitle("DiscMM")
+
+ggplot(OJ, aes(x=LoyalCH)) + geom_histogram() + ggtitle("LoyalCH")
+
+ggplot(OJ, aes(x=SalePriceMM)) + geom_histogram() + ggtitle("SalePriceMM")
+
+ggplot(OJ, aes(x=SalePriceCH)) + geom_histogram() + ggtitle("SalePriceCH")
+
+ggplot(OJ, aes(x=PctDiscMM)) + geom_histogram() + ggtitle("PctDiscMM")
+
+ggplot(OJ, aes(x=PctDiscCH)) + geom_histogram() + ggtitle("PctDiscCH")
+
+ggplot(OJ, aes(x=ListPriceDiff)) + geom_histogram() + ggtitle("ListPriceDiff")
+
+# SalePriceCH and SalePriceMM look slightly skewed left. A histogram is added in the analysis.
+
+```
+
+```{r}
+# Categorical variables: Purchase, StoreID, SpecialCH, SpecialMM
+
+OJ %>%
+  group_by(Purchase) %>%
+  summarise(n = n())
+
+OJ %>%
+  group_by(StoreID) %>%
+  summarise(n = n())
+
+OJ %>%
+  group_by(SpecialCH) %>%
+  summarise(n = n())
+
+OJ %>%
+  group_by(SpecialMM) %>%
+  summarise(n = n())
+
+# Each category has at least 100 values, the largest difference is when looking at SpecialCH, where there were 158 values indicating a special, and 912 indicating no special. This gives a ratio of 0.1732, but there are still enough values to draw conclusions.
+```
+
+## Introduction
+
+Being able to predict what factors are most important to customers when purchasing orange juice at "Grab n Go" is an important asset to the purchasing and marketing teams. The objective of this project is to compare customer data to create a statistical model to predict whether a customer will choose Minute Maid or Citrus Hill orange juice, when given the choice between the two brands. There are three main parts to this task, the first of which explores the dataset and determines which variables are the best potential candidates to explain purchasing habits of customers. The next step accomplishes the task of making sure a statistical model fit to the data using these specified variables will perform well in predicting customer purchases. Lastly, we explore a few different models to ultimately choose a best-fitting one that can help the purchasing team make informed and strategic decisions.
+
+
+## Exploratory Data Analysis
+
+The "OJ" dataset obtained from the ISLR package in R was used for this analysis. The data was first checked to see if there were any missing values for each of the categories. No missing values were present, and so a deeper look at each variable was conducted. The main response variable of interest is labeled as "Purchase," which indicates whether the customer of each transaction ended up purchasing Minute Maid or Citrus Hill orange juice. Out of all transactions, there was a prevalence of 0.3897, meaning 38.97% of customers purchased Minute Maid. 
+
+### Data Cleaning
+
+Because the main focus of this analysis is to help the purchasing and marketing departments to predict which orange juice brand customers will choose, several unnecessary variables were removed from the dataset. “Grab n Go” is a chain store, and therefore, we assume that the advertising and store layouts are similar enough that they will not be an influential factor for customers as they choose their juice. All variables pertaining to store location were dropped. 
+
+The variable indicating which week of the year the purchase occurred was also dropped, since the focus of the study is between the two types of juice, not what time of the year juice sales are the highest. We are also assuming that time of the year does not affect the brand a customer will choose for their orange juice. 
+
+Since the prices of both orange juices and the difference between the prices are all listed as variables, the individual prices were removed to reduce redundancy. The difference between prices that was calculated from the individual prices is really what we are interested in, since the dataset is of orange juice purchases. The actual prices of the juices are not as important as the difference between the prices of the two brands, because we are just comparing between these two categories. This was done for both sales and list prices of the juices. Similar logic is applied to the individual discount amounts offered for both brands, as these values are dropped and only the discount percentage columns are retained.
+
+Other variables that are kept for analysis are pertaining to the specials offered for both juice brands and customer brand loyalty for Citrus Hill.
+
+### Consideration of skewness, outliers, and sample sizes
+
+While exploring the data, histograms were created to determine if skewness is present in any of the quantitative variables. One example of slight skewness is present while looking at the sales prices of each juice. A side-by-side histogram is shown below, indicating that the data for both of these variables is slightly skewed left. However, this does not necessarily warrant a transformation of the sales prices. In future project steps, both transformed and non-transformed values of the difference in sales prices will be fit to a logistic model to see if any substantial benefits are gained by transformation. 
+
+There were no instances of extreme skewness or outliers that need to be addressed in the remaining explanatory variables kept in the dataset. A last concern taken into consideration was the possibility of too few observations in any of the groups for any of the categorical variables. This was addressed by taking counts of each category for each variable, none of which fell below 100 observations. The largest ratio of differences was found while looking at the SpecialCH variable, which is an indicator of a special on Citrus Hill. There were 158 values indicating a special, and 912 indicating no special. This gives a ratio of 0.1732, but there are still enough values in the smaller category that this is not concerning.
+
+```{r, fig.width =6, fig.height = 4, fig.align ='center'}
+# Plot of SalePriceCH and SalePriceMMM
+
+# Create subset of data with two variables of interest
+plot_data <- OJ %>% select(SalePriceMM, SalePriceCH)
+
+# Pivot data longer
+plot_data <- pivot_longer(plot_data, cols = c("SalePriceMM", "SalePriceCH"), names_to = "Brand", values_to = "SalePrice")
+
+# Plot side-by-side histogram
+ggplot(plot_data, aes(x=SalePrice, fill = Brand)) + geom_histogram(position = "dodge") + labs(x="Sale Price ($)", y = "Count", title = "Orange Juice Sale Price by Brand") + scale_fill_discrete(name = "Brand", labels = c("Citrus Hill", "Minute Maid"))
+
+
+```
+
+```{r}
+### Code for Purchasing portion (Preliminary 2)
+
+# Remove unwanted variables specified in preliminary_1
+OJ_df <- subset(OJ, select = -c(STORE, StoreID, PriceCH, PriceMM, DiscCH, DiscMM, ListPriceDiff, Store7, SalePriceMM, SalePriceCH, WeekofPurchase))
+
+# Convert Purchase values to 0/1 (1 indicates MM, 0 indicates CH)
+OJ_df <- OJ_df %>% mutate(Purchase = ifelse(Purchase=="MM", 1, 0))
+
+# Data Partition
+train_index = createDataPartition(OJ_df$Purchase, p = 0.60, list = FALSE, times = 1)
+train = OJ_df[train_index,]
+test = OJ_df[-train_index,]
+
+# TRAIN DATA- Fit training data to model
+model <- glm(Purchase ~ ., data = train, family = "binomial")
+
+# TRAIN DATA - Compute predicted probabilities
+pred <- predict(model, newdata = train, type="response")
+
+# TRAIN DATA - Find the optimal cutoff (in the package InformationValue)
+opt_cut <- optimalCutoff(actuals = train$Purchase,
+              predictedScores = pred, 
+              optimiseFor="misclasserror", returnDiagnostics=TRUE)
+
+# TRAIN DATA - Get predicted classifications using optimal cutoff
+pred_class_opt <- ifelse(pred > opt_cut$optimalCutoff, 1, 0)
+
+# TRAIN DATA - Make new confusion matrix using optimal cutoff
+cmat_opt <- caret::confusionMatrix(as.factor(pred_class_opt),
+                          as.factor(train$Purchase),
+                          positive="1")
+
+#### Accuracy from confusion matrix of TRAIN DATA:  0.8349 ###########
+
+# TEST DATA - Compute predicted probabilities
+pred2 <- predict(model, newdata = test, type="response")
+
+# TEST DATA - Find the optimal cutoff
+opt_cut2 <- optimalCutoff(actuals = test$Purchase,
+              predictedScores = pred2, 
+              optimiseFor="misclasserror", returnDiagnostics=TRUE)
+
+# TEST DATA - Get predicted classifications using optimal cutoff
+pred_class_opt2 <- ifelse(pred2 > opt_cut2$optimalCutoff, 1, 0)
+
+# TEST DATA - Make new confusion matrix using optimal cutoff
+cmat_opt2 <- caret::confusionMatrix(as.factor(pred_class_opt2),
+                          as.factor(test$Purchase),
+                          positive="1")
+
+#### Accuracy from confusion matrix of TEST DATA:  0.8364 ###########
+
+# Overfitting does not appear to be a problem here since the accuracy of both are close from test and training data.   
+
+# Prevalence from TEST set: 0.3715
+# Sensitivity from TEST set: 0.8050
+# Specificity from TEST set: 0.8550
+
+```
+
+
+## Purchasing
+
+### Creating a Logistic Regression Model
+
+Using the OJ dataset with the previously specified variables removed, a logistic regression model was created using 60% of the data as a "training" set. This model aims to predict the probability that a customer will purchase Minute Maid over Citrus Hill orange juice, based on the remaining variables. In the regression analysis, a value of 1 for the Purchase variable corresponds with a customer choosing Minute Maid, and a 0 corresponds with a customer choosing Citrus Hill.
+
+The effectiveness and accuracy of the model created from the training data was then checked using the "validation" or "test" set, which is the other 40% of the original data.
+
+### Model Output and Results
+
+The output of the logistic regression model when applied to the test data set is displayed below in a Confusion Matrix and Statistics summary. 
+
+```{r, results="markup"}
+cmat_opt2
+```
+
+From the summary, the Accuracy value of 0.8364 indicates that the model is correctly computing the purchase about 83.64% of the time. Compared to the accuracy of 0.8349 obtained when using the training data, it is clear there is no worry of overfitting in this model. In other words, although the regression model was built from a smaller partition of the whole data, it can still predict that of the whole fairly well. 
+
+Other values from the summary to note would be Prevalence, Sensitivity, and Specificity. A prevalence of 0.3715 indicates that out of the validation set, 37.15% of customers purchased Minute Maid. This is close to the prevalence of the overall data discussed previously of 38.97%. Sensitivity and specificity are also referred to as the true positive rate and true negative rate, respectively. A sensitivity value of 0.8050 means that 80.50% of the time, our model correctly predicted when a customer would purchase Minute Maid. A specificity value of 0.8550 means that 85.50% of the time, our model correctly predicted when a customer would choose Citrus Hill.
+
+Overall, the logistic regression model created from the training set performs well in predicting the purchasing choices of customers based on the variables kept.
+
+
+## Marketing
+
+### Logstic Regression Model Exploration
+
+To find an explanatory model of customers that purchase Minute Maid orange juice, five logistic regression models were created and compared. Model 1 used only the two categorical variables indicating whether there was a special on Citrus Hill or Minute Maid, labeled SpecialCH and SpecialMM. Model 2 used only the quantitative variable of the difference in prices between Citrus Hill and Minute Maid juice, called PriceDiff. Model 3 used only the two quantitative variables indicating the percentage discount on either Citrus Hill or Minute Maid, labeled PctDiscCH and PctDiscMM. Model 4 used all of the six variables kept after data cleaning, the five mentioned in the previous models plus the quantitative variable indicating the customer brand loyalty for Citrus Hill, LoyalCH. Lastly, Model 5 used all variables from the original OJ dataset before removing variables, as a baseline.
+
+Each regression model had its Akaike information criterion (AIC) and McFadden pseudo-R^2^ values calculated for comparison. By far, the two models that gave the lowest AIC and highest pseudo-R^2^ were Model 4 and Model 5. Although Model 5 presented the values indicating the best fit, AIC differences of 846.5 and 842.6 and pseudo-R^2^ differences of 0.418 and 0.429 between Models 4 and 5 respectively are small. Therefore, Model 4 was chosen as the best-fitting model, since there are far fewer variables and it is much easier to explain relationships between them.
+
+```{r}
+
+# Model 1: Using only SpecialCH & SpecialMM
+model1 <- glm(Purchase ~ SpecialCH + SpecialMM, data = OJ_df, family = "binomial")
+
+# Model 2: Using only PriceDiff
+model2 <- glm(Purchase ~ PriceDiff, data = OJ_df, family = "binomial")
+
+# Model 3: Using only PctDiscMM & PctDiscCH
+model3 <- glm(Purchase ~ PctDiscMM + PctDiscCH, data = OJ_df, family = "binomial")
+
+# Model 4: Using all 6 explanatory variables in reduced set
+model4 <- glm(Purchase ~., data = OJ_df, family = "binomial")
+
+# Model 5: Using all 17 explanatory variables in original set
+model5 <- glm(Purchase ~., data = OJ, family = "binomial")
+
+# Model Summaries and AIC (lowest value is best fit)
+summary(model1) # AIC = 1391.5
+summary(model2) # AIC = 1352.8
+summary(model3) # AIC = 1366
+summary(model4) # AIC = 846.47 
+summary(model5) # AIC = 842.6
+
+# Model McFadden pseudo-R2 (largest value is best fit)
+PseudoR2(model1, which = "McFadden") # R2 = 0.0316853 
+PseudoR2(model2, which = "McFadden") # R2 = 0.05731663 
+PseudoR2(model3, which = "McFadden") # R2 = 0.0494832 
+PseudoR2(model4, which = "McFadden") # R2 = 0.418201
+PseudoR2(model5, which = "McFadden") # R2 = 0.4292892
+
+# Continuing with Model 4
+```
+
+### Summary of Regression Model 4
+
+The output for the logistic regression model using all six of the reduced variables is displayed below.
+
+```{r, results="markup"}
+# Print summary of Model 4 when knit
+summary(model4)
+```
+
+From the p-values of each regression coefficient, it is apparent that with a significance level of 0.05, the only two variables that are significant in determining a customer's purchase are LoyalCH and PriceDiff. For each variable, 95% confidence intervals were created for the odds ratios of each regression coefficient. These values are displayed in the follow forest plot, where it may be seen that the only two variables that did not cross an odds ratio of 1 are LoyalCH and PriceDiff.
+
+```{r, fig.width = 6, fig.height = 4}
+exp(confint(model4, level = 0.90))
+
+plot_model(model4, vline.color = "red", sort.est = TRUE, title = "95% Confidence Intervals of Odds Ratios")
+
+```
+
+Marginal effects plots for the two significant variables, PriceDiff and LoyalCH, are presented below. With other variables set at their means, each plot shows the impact that the specific variable has on a customer's purchase. From the first plot, it may be seen that as the difference in price increases, the percentage of purchases decreases. Purchase percent is roughly 50% when the difference is about -0.10, meaning customers generally choose Minute Maid 50% of the time when the price of Citrus Hill is only slightly more expensive, about 10 cents more. 
+
+The LoyalCH plot also shows that as customer loyalty for Citrus Hill increases, the percentage of customers purchasing Minute Maid decreases. This also follows what we would expect, as the category name suggests. The results of this plot are not alarming, however, as the 50% purchase percent value is fairly close to the 0.50 customer brand loyalty value. Customers that buy Citrus Hill products about half of the time in general will also choose Minute Maid orange juice half of the time as well. Price difference could potentially sway those customers that are moderately choosing Citrus Hill products.
+
+```{r, out.width='.49\\linewidth', fig.width=3, fig.height=2,fig.show='hold',fig.align='center'}
+
+# Plot side-by-side marginal effects plots for PriceDiff and LoyalCH
+par(mar = c(4, 4, .1, .1))
+
+plot_model(model4, type = "pred", terms = c("PriceDiff[all]")) + labs(title = str_wrap("Predicted Probabilities of Purchase", 25))
+
+plot_model(model4, type = "pred", terms = c("LoyalCH [all]")) + labs(title = str_wrap("Predicted Probabilities of Purchase", 25))
+```
+```{r, fig.keep = "none"}
+
+# Plot side-by-side marginal effects plots for other quantitative variables
+
+plot_model(model4, type = "pred", terms = c("PctDiscCH [all]")) 
+plot_model(model4, type = "pred", terms = c("PctDiscMM [all]"))
+
+# Plot side-by-side marginal effects plots for categorical variables
+
+plot_model(model4, type = "pred", terms = c("SpecialMM [all]")) 
+plot_model(model4, type = "pred", terms = c("SpecialCH [all]"))
+
+# Figures not included in the final report since no other variables are significant using our chosen model. 
+
+```
+
+### Marketing Suggestions to Improve Minute Maid Purchases
+
+From the logistic regression model, one suggestion the marketing team may implement is to focus efforts on pricing Minute Maid orange juice slightly below Citrus Hill to increase its purchase rate. Keeping track of Citrus Hill prices at all times and adjusting the rate based on that price should influence buyers to choose Minute Maid more often. The percentages of discounts and specials on the juices do not affect the customer's purchase choice as much as the final difference in sales price. Even adjusting the price of Minute Maid as little as 10 cents fewer than that Citrus Hill should encourage customers to pick the former. In general, efforts should be reduced to maximize the percentages of discounts or number of specials on Minute Maid if they do not ultimately create a lower current sales price than its Citrus Hill competitor. 
+
+## Summary and Recommendations
+
+The orange juice dataset used helped us to identify potential variables that could potentially influence customer purchasing the most, and narrow them down to make insightful marketing and purchasing recommendations. In summary, after exploring the data, a logistic regression model using six variables was used to find the main factor important to customers when predicting their purchasing. The potential variables included ones to depict whether or not there were specials on the juice brands, the percentage discount offered on the juice brands, customer brand loyalty towards Citrus Hill, and the overall sales price difference between the two brands at that time of purchase. After checking that a regression model would be able to predict a customer's purchase well based on these variables, a model was created and analyzed. 
+
+Sales price difference between Minute Maid and Citrus Hill orange juice is the most significant variable that will determine the purchasing choice of most customers, and is something that the marketing and purchasing teams should focus their energy on. Regardless of if there are sales or specials going on that lower the price of Minute Maid, the final sales price has to be lower than Citrus Hill to make an impact on the customer's decision. Even a price difference of just 10 cents should be enough to impact customers.
